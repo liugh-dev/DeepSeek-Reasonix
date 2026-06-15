@@ -103,7 +103,10 @@ type Options struct {
 	// install_source, and task behind connect_tool_source.
 	TokenMode string
 	// SessionDir overrides where persisted chat transcripts are written. When
-	// empty, the shared CLI/global session directory is used.
+	// empty, transcripts default to the per-workspace session dir
+	// (config.ProjectSessionDir) so /resume and --continue are scoped to the
+	// current project; the shared global dir is used only when that can't be
+	// resolved, and is always passed to the history tool as GlobalSessionDir.
 	SessionDir string
 	// SharedHost is an optional plugin.Host shared across controllers for the
 	// same workspace root. When set, boot.Build reuses its running clients
@@ -192,9 +195,20 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		sink.Emit(event.Event{Kind: event.Notice, Text: fmt.Sprintf("model %q is selected but its API key %s is not set — requests will fail until you set it", modelName, entry.APIKeyEnv)})
 	}
 	jm := jobs.NewManager(sink, jobs.WithStalledWarningAfter(time.Duration(cfg.BackgroundJobStalledWarningSeconds())*time.Second))
+	// Resolve the session dir once, up front, so both the startup
+	// cleanup-pending reconciliation and every later consumer (subagent store,
+	// history tool, controller) agree on it. The default is the per-workspace
+	// dir (config.ProjectSessionDir) so /resume and --continue list only this
+	// project's sessions; the shared global dir is the fallback when the
+	// workspace/config root can't be resolved, and is still passed to the
+	// history tool as GlobalSessionDir so older sessions keep surfacing.
 	sessionDir := opts.SessionDir
 	if sessionDir == "" {
-		sessionDir = config.SessionDir()
+		if projectDir := config.ProjectSessionDir(root); projectDir != "" {
+			sessionDir = projectDir
+		} else {
+			sessionDir = config.SessionDir()
+		}
 	}
 	reconcileCleanupPending := opts.CleanupPendingReconciler
 	if reconcileCleanupPending == nil {

@@ -408,7 +408,9 @@ model = "x"
 	if err := ctrl.Run(context.Background(), "continue review"); err != nil {
 		t.Fatalf("second Run: %v", err)
 	}
-	store := agent.NewSubagentStore(filepath.Join(config.SessionDir(), "subagents"))
+	// Subagents are persisted under the controller's resolved session dir
+	// (per-workspace since the /resume-scoping change), not the global dir.
+	store := agent.NewSubagentStore(filepath.Join(ctrl.SessionDir(), "subagents"))
 	meta, err := store.LoadMeta(ref)
 	if err != nil {
 		t.Fatalf("LoadMeta: %v", err)
@@ -419,7 +421,7 @@ model = "x"
 	if meta.ParentSession != agent.BranchID(sessionPath) {
 		t.Fatalf("parent session = %q, want %q", meta.ParentSession, agent.BranchID(sessionPath))
 	}
-	sess, err := agent.LoadSession(filepath.Join(config.SessionDir(), "subagents", ref+".jsonl"))
+	sess, err := agent.LoadSession(filepath.Join(ctrl.SessionDir(), "subagents", ref+".jsonl"))
 	if err != nil {
 		t.Fatalf("LoadSession: %v", err)
 	}
@@ -957,6 +959,50 @@ api_key_env = "REASONIX_TEST_KEY_UNSET"
 
 	if got := ctrl.SessionDir(); got != sessionDir {
 		t.Fatalf("SessionDir() = %q, want override %q", got, sessionDir)
+	}
+}
+
+// TestBuildDefaultsToWorkspaceSessionDir pins the routing change: when
+// SessionDir is not set explicitly, the controller's session dir is the
+// per-workspace dir (config.ProjectSessionDir for the resolved root), NOT the
+// shared global dir. This is what scopes /resume and --continue to the current
+// project. The explicit-override path is covered by TestBuildHonorsSessionDirOverride.
+func TestBuildDefaultsToWorkspaceSessionDir(t *testing.T) {
+	isolateConfigHome(t)
+	root := robustTempDir(t)
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, root, "reasonix.toml", `
+default_model = "test-model"
+
+[codegraph]
+enabled = false
+
+[[providers]]
+name = "test-model"
+kind = "openai"
+base_url = "https://example.invalid"
+model = "x"
+api_key_env = "REASONIX_TEST_KEY_UNSET"
+`)
+	t.Chdir(root)
+
+	ctrl, err := Build(context.Background(), Options{Model: "test-model"})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer ctrl.Close()
+
+	want := config.ProjectSessionDir(root)
+	if want == "" {
+		t.Fatal("ProjectSessionDir unexpectedly empty under isolated config home")
+	}
+	if got := ctrl.SessionDir(); got != want {
+		t.Fatalf("SessionDir() = %q, want workspace dir %q", got, want)
+	}
+	if global := config.SessionDir(); global != "" && ctrl.SessionDir() == global {
+		t.Fatalf("SessionDir() = global %q; should be workspace-scoped", global)
 	}
 }
 
