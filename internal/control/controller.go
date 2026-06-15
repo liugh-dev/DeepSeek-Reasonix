@@ -17,11 +17,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1506,8 +1506,13 @@ func (c *Controller) NewSession() error {
 	return nil
 }
 
-// ClearSession discards the current conversation without preserving it in
-// resume/history, then rotates to a clean session carrying the same system prompt.
+// ClearSession is an alias for NewSession. Both /new and /clear mean the same
+// thing: snapshot the current transcript to disk, then rotate to a fresh
+// session. There is no longer a destructive "discard without saving" flow —
+// removal of a saved session is performed explicitly via DeleteSession (e.g.
+// from the /resume picker). All frontends (chat TUI, HTTP/SSE, ACP, desktop)
+// inherit this behavior, so the resume/history list is the only place a
+// session can be removed.
 func (c *Controller) ClearSession() error {
 	if c.executor == nil {
 		return nil
@@ -2261,6 +2266,26 @@ func (c *Controller) SessionPath() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.sessionPath
+}
+
+// DeleteSession moves a saved session's transcript, sidecars, checkpoint
+// directory, and subagent artifacts into <sessionDir>/.trash/<key>/ so the
+// operation is reversible. It refuses to delete the active session (the user
+// must rotate via /new or /clear first) and refuses paths outside the
+// configured SessionDir. The path is validated against symlink escapes the
+// same way the desktop trash flow validates.
+func (c *Controller) DeleteSession(path string) error {
+	c.mu.Lock()
+	dir := c.sessionDir
+	active := c.sessionPath
+	c.mu.Unlock()
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("session dir is not configured")
+	}
+	if path == active {
+		return ErrActiveSession
+	}
+	return TrashSession(dir, path)
 }
 
 func (c *Controller) parentSessionID() string {

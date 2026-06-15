@@ -174,56 +174,6 @@ func TestNewTreatsTypedNilSinkAsDiscard(t *testing.T) {
 	c.notice("typed nil sink should not panic")
 }
 
-func TestClearSessionMarksCleanupPendingBeforeReturningForRunningJobs(t *testing.T) {
-	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "old.jsonl")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(oldPath, []byte(`{"role":"user","content":"old"}`+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	exec := agent.New(nil, nil, agent.NewSession("sys"), agent.Options{}, event.Discard)
-	jm := jobs.NewManager(event.Discard)
-	release := make(chan struct{})
-	started := make(chan struct{})
-	defer func() {
-		close(release)
-		jm.Close()
-	}()
-	jm.StartForSession(agent.BranchID(oldPath), "task", "stuck clear", func(ctx context.Context, _ io.Writer) (string, error) {
-		close(started)
-		<-ctx.Done()
-		<-release
-		return "", ctx.Err()
-	})
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("background job never started")
-	}
-
-	ctrl := New(Options{Executor: exec, SessionDir: dir, SessionPath: oldPath, Label: "test", Jobs: jm})
-	if err := ctrl.ClearSession(); err != nil {
-		t.Fatalf("ClearSession: %v", err)
-	}
-	if !agent.IsCleanupPending(oldPath) {
-		t.Fatalf("old session should be cleanup-pending before ClearSession returns")
-	}
-	if _, err := os.Stat(oldPath); err != nil {
-		t.Fatalf("old session file should remain until delayed cleanup: %v", err)
-	}
-	sessions, err := agent.ListSessions(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, session := range sessions {
-		if filepath.Clean(session.Path) == filepath.Clean(oldPath) {
-			t.Fatalf("cleanup-pending old session still listed: %+v", sessions)
-		}
-	}
-}
-
 func TestReconcileCleanupPendingRemovesOrphanedArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "orphan.jsonl")
@@ -679,7 +629,7 @@ func TestTwoModelShortChoiceReplySkipsPlanner(t *testing.T) {
 	}
 }
 
-func TestSubmitClearDiscardsCurrentContextWithoutSavingTranscript(t *testing.T) {
+func TestSubmitClearSavesTranscriptAndRotates(t *testing.T) {
 	dir := t.TempDir()
 	sess := agent.NewSession("sys")
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "old context"})
@@ -687,13 +637,6 @@ func TestSubmitClearDiscardsCurrentContextWithoutSavingTranscript(t *testing.T) 
 	path := filepath.Join(dir, "session.jsonl")
 	c := New(Options{Executor: exec, SystemPrompt: "sys", SessionDir: dir, SessionPath: path, Label: "test"})
 	if err := c.Snapshot(); err != nil {
-		t.Fatal(err)
-	}
-	ckpt := ckptDir(path)
-	if err := os.MkdirAll(ckpt, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ckpt, "turn-0.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -705,10 +648,14 @@ func TestSubmitClearDiscardsCurrentContextWithoutSavingTranscript(t *testing.T) 
 	if c.SessionPath() == path {
 		t.Fatal("/clear did not rotate to a fresh session path")
 	}
-	for _, p := range []string{path, agent.BranchMetaPath(path), ckpt} {
-		if _, err := os.Stat(p); !os.IsNotExist(err) {
-			t.Fatalf("discarded artifact %s still exists or stat failed with %v", p, err)
-		}
+	// The prior transcript must still be on disk — /clear now matches /new
+	// and preserves the previous session so it can show up in /resume.
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatalf("previous transcript was not preserved: %v", err)
+	}
+	if len(loaded.Messages) != 2 || loaded.Messages[1].Content != "old context" {
+		t.Fatalf("previous transcript content wrong: %+v", loaded.Messages)
 	}
 	if _, err := os.Stat(c.SessionPath()); !os.IsNotExist(err) {
 		t.Fatalf("fresh empty session should not be saved yet; stat err=%v", err)
@@ -716,6 +663,28 @@ func TestSubmitClearDiscardsCurrentContextWithoutSavingTranscript(t *testing.T) 
 	current := exec.Session().Snapshot()
 	if len(current) != 1 || current[0].Role != provider.RoleSystem || current[0].Content != "sys" {
 		t.Fatalf("cleared context = %+v, want only system prompt", current)
+	}
+}
+
+func TestClearSessionIsEquivalentToNewSession(t *testing.T) {
+	dir := t.TempDir()
+	sess := agent.NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "x"})
+	exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	path := filepath.Join(dir, "session.jsonl")
+	c := New(Options{Executor: exec, SystemPrompt: "sys", SessionDir: dir, SessionPath: path, Label: "test"})
+	if err := c.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	// Old path is preserved; new path is fresh and unsaved.
+	if c.SessionPath() == path {
+		t.Fatal("ClearSession should rotate to a fresh path")
+	}
+	if _, err := agent.LoadSession(path); err != nil {
+		t.Fatalf("prior transcript not saved: %v", err)
+	}
+	if _, err := os.Stat(c.SessionPath()); !os.IsNotExist(err) {
+		t.Fatalf("new path should not be saved yet: %v", err)
 	}
 }
 

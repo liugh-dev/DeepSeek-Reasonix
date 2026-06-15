@@ -59,10 +59,58 @@ func (m chatTUI) handleResumePickerKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		if r.sel < len(r.sessions)-1 {
 			r.sel++
 		}
+	case "x":
+		return m.deleteResumePickEntry()
 	case "enter":
 		return m.applyResumePick()
 	case "esc":
 		m.resumePick = nil
+	}
+	return m, nil
+}
+
+// deleteResumePickEntry moves the selected session into the local trash
+// (recoverable from <sessionDir>/.trash/<key>/) and removes it from the
+// picker list. It refuses to delete the active session or act while a turn
+// is in flight, in line with applyResumePick. The picker stays open so the
+// user can keep navigating; if the list becomes empty it closes.
+func (m chatTUI) deleteResumePickEntry() (tea.Model, tea.Cmd) {
+	r := m.resumePick
+	if r == nil || r.sel < 0 || r.sel >= len(r.sessions) {
+		return m, nil
+	}
+	target := r.sessions[r.sel]
+	if target.Path == m.ctrl.SessionPath() || r.sel == r.active {
+		m.notice(i18n.M.ResumePickCannotDeleteActive)
+		return m, nil
+	}
+	if m.ctrl.Running() {
+		m.notice(i18n.M.ResumeBusy)
+		return m, nil
+	}
+	if err := m.ctrl.DeleteSession(target.Path); err != nil {
+		m.notice(fmt.Sprintf(i18n.M.ResumePickDeleteFailedFmt, err))
+		return m, nil
+	}
+	m.notice(fmt.Sprintf(i18n.M.ResumePickDeletedFmt, sessionPickerLabel(target)))
+
+	// Drop the entry and adjust the cursor + active index.
+	r.sessions = append(r.sessions[:r.sel], r.sessions[r.sel+1:]...)
+	if r.active > r.sel {
+		r.active--
+	}
+	if len(r.sessions) == 0 {
+		m.resumePick = nil
+		return m, nil
+	}
+	if r.sel >= len(r.sessions) {
+		r.sel = len(r.sessions) - 1
+	}
+	// If the active row was removed (it shouldn't be — we refuse to delete
+	// the active one above — but guard anyway), leave the cursor on sel=0
+	// so the user lands on a real entry.
+	if r.active < 0 {
+		r.active = -1
 	}
 	return m, nil
 }

@@ -484,7 +484,7 @@ func TestMCPManagerHidesComposerBox(t *testing.T) {
 	}
 }
 
-func TestClearCommandRequiresConfirmationAndDiscardsSession(t *testing.T) {
+func TestClearCommandSavesTranscriptAndClearsDisplay(t *testing.T) {
 	dir := t.TempDir()
 	sess := agent.NewSession("sys")
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "old context"})
@@ -496,55 +496,22 @@ func TestClearCommandRequiresConfirmationAndDiscardsSession(t *testing.T) {
 	}
 	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 80)
 
+	// /clear should rotate immediately — no confirmation overlay, no
+	// destructive "discard" semantics. It is an alias for /new now.
 	if cmd := m.runSlashCommand("/clear"); cmd != nil {
-		t.Fatal("/clear should open a local confirmation without returning a command")
+		t.Fatal("/clear should not return a command")
 	}
-	if m.clearConfirm == nil {
-		t.Fatal("/clear should open a confirmation prompt")
-	}
-	if m.clearConfirm.confirm != 1 {
-		t.Fatalf("/clear confirmation should default to cancel, got %d", m.clearConfirm.confirm)
-	}
-	m0, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	m = m0.(chatTUI)
-	footerRows := strings.Count(m.renderMainManagerFooter(), "\n") + 1
-	if got, want := m.bottomRows(), footerRows+m.statusLineCount; got != want {
-		t.Fatalf("bottomRows with /clear confirmation = %d, want %d (footer + status rows; confirmation renders in main area)", got, want)
-	}
-	if !m.hideComposer() {
-		t.Fatal("/clear confirmation should hide the composer")
-	}
-	content := ansi.Strip(m.View().Content)
-	if !strings.Contains(content, "Clear current context without saving?") {
-		t.Fatalf("/clear confirmation prompt missing from view:\n%s", content)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("session should still exist before confirmation: %v", err)
-	}
-	if current := exec.Session().Snapshot(); len(current) != 2 {
-		t.Fatalf("context changed before confirmation: %+v", current)
-	}
-
-	next, _ := m.handleClearConfirmKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = next.(chatTUI)
-	if m.clearConfirm != nil {
-		t.Fatal("Enter on default cancel should close the confirmation")
-	}
-	if ctrl.SessionPath() != path {
-		t.Fatal("cancelled /clear should not rotate the session path")
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("cancelled /clear should keep the session file: %v", err)
-	}
-
-	m.runSlashCommand("/clear")
-	next, _ = m.handleClearConfirmKey(tea.KeyPressMsg{Code: 'y'})
-	m = next.(chatTUI)
 	if ctrl.SessionPath() == path {
-		t.Fatal("confirmed /clear should rotate to a fresh session path")
+		t.Fatal("/clear should rotate to a fresh session path")
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("confirmed /clear should remove the old transcript, stat err=%v", err)
+	// The previous transcript stays on disk and remains loadable so it can
+	// show up in the /resume picker.
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatalf("previous transcript should be preserved: %v", err)
+	}
+	if len(loaded.Messages) != 2 || loaded.Messages[1].Content != "old context" {
+		t.Fatalf("previous transcript content wrong: %+v", loaded.Messages)
 	}
 	current := exec.Session().Snapshot()
 	if len(current) != 1 || current[0].Role != provider.RoleSystem || current[0].Content != "sys" {
@@ -552,6 +519,28 @@ func TestClearCommandRequiresConfirmationAndDiscardsSession(t *testing.T) {
 	}
 	if len(m.transcript) == 0 || strings.Contains(strings.Join(m.transcript, "\n"), "old context") {
 		t.Fatalf("TUI transcript was not reset after /clear: %+v", m.transcript)
+	}
+}
+
+func TestNewCommandSavesTranscriptAndClearsDisplay(t *testing.T) {
+	dir := t.TempDir()
+	sess := agent.NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "old context"})
+	exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	path := filepath.Join(dir, "session.jsonl")
+	ctrl := control.New(control.Options{Executor: exec, SystemPrompt: "sys", SessionDir: dir, SessionPath: path, Label: "test"})
+	if err := ctrl.Snapshot(); err != nil {
+		t.Fatal(err)
+	}
+	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 80)
+	if cmd := m.runSlashCommand("/new"); cmd != nil {
+		t.Fatal("/new should not return a command")
+	}
+	if ctrl.SessionPath() == path {
+		t.Fatal("/new should rotate to a fresh session path")
+	}
+	if _, err := agent.LoadSession(path); err != nil {
+		t.Fatalf("previous transcript should be preserved by /new: %v", err)
 	}
 }
 

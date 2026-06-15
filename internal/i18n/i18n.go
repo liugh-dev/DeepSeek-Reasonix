@@ -63,9 +63,12 @@ type Messages struct {
 
 	RenameUsage     string // /rename with no args
 	RenameNoSession string // /rename with no active session
-	RenameDoneFmt   string // /rename succeeded (one %s = new title)
-	ResumePickTitle string // header in the interactive resume picker
-	ResumePickHint  string // keyboard hint in the interactive resume picker
+	RenameDoneFmt            string // /rename succeeded (one %s = new title)
+	ResumePickTitle          string // header in the interactive resume picker
+	ResumePickHint           string // keyboard hint in the interactive resume picker
+	ResumePickCannotDeleteActive string // /resume picker: tried to delete the active session via x
+	ResumePickDeletedFmt     string // /resume picker: x deleted a session, %s = truncated label
+	ResumePickDeleteFailedFmt string // /resume picker: x delete failed, %v = error
 
 	// chat TUI status line / approval banner.
 	ChatThinking                string // live reasoning marker label, e.g. "thinking…"

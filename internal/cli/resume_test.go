@@ -118,6 +118,104 @@ func TestResumePickerEscDismisses(t *testing.T) {
 	}
 }
 
+// TestResumePickerXTrashesSelection proves the new "x" key moves the
+// highlighted session into the local trash (recoverable from <dir>/.trash/<key>/)
+// and removes it from the picker list. The picker stays open with the
+// remaining entries.
+func TestResumePickerXTrashesSelection(t *testing.T) {
+	dir := t.TempDir()
+	exec := agent.New(nil, nil, agent.NewSession("sys"), agent.Options{}, event.Discard)
+	ctrl := control.New(control.Options{Executor: exec, SessionDir: dir, Label: "test"})
+
+	aPath := filepath.Join(dir, "a.jsonl")
+	saveTestSession(t, aPath, "first session prompt")
+	bPath := filepath.Join(dir, "b.jsonl")
+	saveTestSession(t, bPath, "second session prompt")
+	// Stagger mtimes so the order is deterministic.
+	now := time.Now()
+	if err := os.Chtimes(aPath, now.Add(-2*time.Second), now.Add(-2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(bPath, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestChatTUI()
+	m.width = 80
+	m.ctrl = ctrl
+	m.runSlashCommand("/resume")
+	if m.resumePick == nil || len(m.resumePick.sessions) != 2 {
+		t.Fatalf("picker should have 2 sessions, got %+v", m.resumePick)
+	}
+	// The default selection points at the most-recent file, which is b.jsonl
+	// after the chtimes above. Press x to trash it.
+	deletedPath := m.resumePick.sessions[m.resumePick.sel].Path
+	next, _ := m.handleResumePickerKey(tea.KeyPressMsg{Code: 'x'})
+	m = next.(chatTUI)
+
+	// Source file is gone; the .trash/<key>/<key>.jsonl entry exists.
+	if _, err := os.Stat(deletedPath); !os.IsNotExist(err) {
+		t.Fatalf("trashed file should be removed from session dir, stat err=%v", err)
+	}
+	trashEntry := filepath.Join(dir, ".trash", filepath.Base(deletedPath), filepath.Base(deletedPath))
+	if _, err := os.Stat(trashEntry); err != nil {
+		t.Fatalf("trash entry missing: %v", err)
+	}
+	// Picker remains open with the surviving session.
+	if m.resumePick == nil {
+		t.Fatal("picker should stay open after delete")
+	}
+	if len(m.resumePick.sessions) != 1 {
+		t.Fatalf("picker should have 1 session left, got %d", len(m.resumePick.sessions))
+	}
+	if m.resumePick.sessions[0].Path == deletedPath {
+		t.Fatalf("deleted session still in picker: %+v", m.resumePick.sessions[0])
+	}
+}
+
+// TestResumePickerXRefusesActiveSession proves pressing x on the active
+// session row is a no-op — the picker shows a notice and the session stays
+// on disk and in the list. Use /new first to expose the active row in the
+// picker.
+func TestResumePickerXRefusesActiveSession(t *testing.T) {
+	dir := t.TempDir()
+	active := agent.NewSession("sys")
+	active.Add(provider.Message{Role: provider.RoleUser, Content: "active prompt"})
+	exec := agent.New(nil, nil, active, agent.Options{}, event.Discard)
+	ctrl := control.New(control.Options{Executor: exec, SessionDir: dir, Label: "test"})
+	activePath := filepath.Join(dir, "active.jsonl")
+	ctrl.SetSessionPath(activePath)
+	if err := ctrl.Snapshot(); err != nil {
+		t.Fatal(err)
+	}
+	otherPath := filepath.Join(dir, "other.jsonl")
+	saveTestSession(t, otherPath, "other prompt")
+
+	m := newTestChatTUI()
+	m.width = 80
+	m.ctrl = ctrl
+	m.runSlashCommand("/resume")
+	if m.resumePick == nil {
+		t.Fatal("bare /resume should open the picker")
+	}
+	// Move the cursor up to the active row.
+	for m.resumePick.sel > 0 {
+		next, _ := m.handleResumePickerKey(tea.KeyPressMsg{Code: tea.KeyUp})
+		m = next.(chatTUI)
+	}
+	if m.resumePick.sessions[m.resumePick.sel].Path != activePath {
+		t.Fatalf("expected active row at sel=0, got %q", m.resumePick.sessions[m.resumePick.sel].Path)
+	}
+	next, _ := m.handleResumePickerKey(tea.KeyPressMsg{Code: 'x'})
+	m = next.(chatTUI)
+	if _, err := os.Stat(activePath); err != nil {
+		t.Fatalf("active session should not be moved, stat err=%v", err)
+	}
+	if m.resumePick == nil || len(m.resumePick.sessions) != 2 {
+		t.Fatalf("picker should still hold both sessions, got %+v", m.resumePick)
+	}
+}
+
 // TestResumeDispatchSwitchesAndReplays drives "/resume <n>" through the slash
 // dispatcher and asserts the controller switched session AND the resumed
 // transcript was replayed into the scrollback.

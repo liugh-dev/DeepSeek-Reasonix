@@ -231,10 +231,6 @@ type chatTUI struct {
 	mcp         *mcpManager
 	mcpDisabled map[string]bool
 
-	// clearConfirm is the destructive "/clear" confirmation overlay. It is separate
-	// from /new because /clear discards the current transcript instead of saving it.
-	clearConfirm *clearConfirm
-
 	// lastCtrlCAt records when Ctrl+C was pressed while idle on an empty
 	// composer, enabling a "press again to quit" confirmation pattern (1.5s
 	// window). Reset when Ctrl+C clears non-empty input instead.
@@ -593,6 +589,32 @@ func (m *chatTUI) resetSubmittedInputRecall() {
 	m.submittedInputDraft = ""
 }
 
+// resetFreshContextView drops the displayed TUI state so the next turn renders
+// on a clean slate. Used by /new and /clear — both end the previous session
+// and rotate to a fresh one. When clearTranscript is true the on-screen
+// transcript is wiped entirely; otherwise we keep the rendered lines and just
+// mark the fork with a fresh banner (used in native scrollback mode where the
+// terminal retains the history itself).
+func (m *chatTUI) resetFreshContextView(clearTranscript bool) {
+	m.finalizeStreamed()
+	m.pending.Reset()
+	m.reasoning.Reset()
+	m.todoArgs = ""
+	m.chooser = nil
+	m.pendingApproval = nil
+	m.bubblePending = false
+	m.turnDiscarded = false
+	if clearTranscript {
+		m.transcript = nil
+		m.wrappedLines = nil
+		m.viewport.SetContent("")
+	} else {
+		m.commitLine("")
+	}
+	m.commitLine(strings.TrimRight(renderTUIBanner(m.label, "", m.width), "\n"))
+	m.transcriptDirty = true
+}
+
 // navigateQueue moves through the pending interject queue during tuiRunning.
 // delta < 0 means ↑ (older), delta > 0 means ↓ (newer). Returns true if the
 // input was updated.
@@ -864,7 +886,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateCompletion()
 			return m, finalize(m, cmds)
 		}
-		if !m.chooserTyping() && m.pendingApproval == nil && m.rewind == nil && m.resumePick == nil && m.mcp == nil && m.clearConfirm == nil && m.mcpImport == nil && m.skillPick == nil && m.shouldFoldPaste(msg.Content) {
+		if !m.chooserTyping() && m.pendingApproval == nil && m.rewind == nil && m.resumePick == nil && m.mcp == nil && m.mcpImport == nil && m.skillPick == nil && m.shouldFoldPaste(msg.Content) {
 			m.insertFoldedPaste(msg.Content)
 			m.growInputToFit()
 			m.updateCompletion()
@@ -941,10 +963,6 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The MCP manager is modal while open: keys navigate it.
 		if m.mcp != nil {
 			return m.handleMCPManagerKey(msg)
-		}
-		// The destructive /clear confirmation is modal while open.
-		if m.clearConfirm != nil {
-			return m.handleClearConfirmKey(msg)
 		}
 		// The skill picker is modal while open: keys navigate it.
 		if m.skillPick != nil {
@@ -1563,7 +1581,7 @@ func (m chatTUI) bottomRows() int {
 // reserve rows for a composer that cannot receive input, leaving a confusing
 // blank/bordered area at the bottom of the TUI.
 func (m chatTUI) hideComposer() bool {
-	if m.mcp != nil || m.clearConfirm != nil || m.mcpImport != nil || m.skillPick != nil || m.resumePick != nil || m.copyPick != nil || m.rewind != nil || m.pendingApproval != nil {
+	if m.mcp != nil || m.mcpImport != nil || m.skillPick != nil || m.resumePick != nil || m.copyPick != nil || m.rewind != nil || m.pendingApproval != nil {
 		return true
 	}
 	return m.chooser != nil && !m.chooser.typing
@@ -1580,9 +1598,6 @@ func (m chatTUI) transcriptHeight() int {
 
 func (m chatTUI) renderMainManager() string {
 	if card := m.renderMCPManager(); card != "" {
-		return card
-	}
-	if card := m.renderClearConfirm(); card != "" {
 		return card
 	}
 	return m.renderSkillPicker()
@@ -1605,8 +1620,6 @@ func (m chatTUI) renderMainManagerFooter() string {
 	switch {
 	case m.mcp != nil:
 		hint = m.mcp.footerHint()
-	case m.clearConfirm != nil:
-		hint = "Enter confirm · y clear · n/Esc cancel"
 	case m.skillPick != nil:
 		hint = m.skillPickerFooterHint()
 	}
@@ -3303,12 +3316,20 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 			m.notice(fmt.Sprintf("%s: %v", i18n.M.SlashNewFailed, err))
 			return nil
 		}
-		// Native scrollback keeps the old transcript; mark the fork with a fresh banner.
-		m.resetFreshContextView(false)
+		m.resetFreshContextView(true)
 		m.notice(i18n.M.SlashNewDone)
 	case "/clear":
+		// /clear is an alias for /new: both save the current transcript to
+		// disk and then rotate to a fresh session. Saved sessions are removed
+		// explicitly from the /resume picker (x key), so there is no need for
+		// a destructive "discard without saving" path.
 		m.echoLocalCommand(input)
-		m.clearConfirm = &clearConfirm{confirm: 1}
+		if err := m.ctrl.ClearSession(); err != nil {
+			m.notice(fmt.Sprintf("%s: %v", i18n.M.SlashNewFailed, err))
+			return nil
+		}
+		m.resetFreshContextView(true)
+		m.notice(i18n.M.SlashClearDone)
 	case "/resume":
 		m.runResumeCommand(input)
 	case "/rename":
