@@ -787,6 +787,7 @@ function normalizeProviderView(p: ProviderView): ProviderView {
     visionModels,
     visionModelsConfigured: Boolean(p.visionModelsConfigured ?? visionModels.length > 0),
     modelsUrl: p.modelsUrl ?? "",
+    contextWindows: p.contextWindows ?? {},
     reasoningProtocol: normalizeReasoningProtocol(p.reasoningProtocol),
     supportedEfforts: asArray(p.supportedEfforts),
     requiresKey,
@@ -4297,6 +4298,15 @@ function ProviderEditor({
   // Empty when unset so the placeholder (and its "0 = default" hint) reads instead
   // of a bare "0"; saved back as 0.
   const [ctx, setCtx] = useState(initial?.contextWindow ? String(initial.contextWindow) : "");
+  // Per-model context_window overrides. Initialised from `initial.contextWindows`
+  // and merged with the current `models` list so adding/removing a model id keeps
+  // the editor in sync. Each row is [model id, token string]; rows for unlisted
+  // models are still preserved (so a user-typed model id doesn't get dropped on
+  // the next save) and serialized back as-is.
+  const [contextWindows, setContextWindows] = useState<[string, string][]>(() => {
+    const seed: Record<string, number> = { ...(initial?.contextWindows ?? {}) };
+    return Object.entries(seed).map(([k, v]) => [k, v ? String(v) : ""]);
+  });
   const [reasoningProtocol, setReasoningProtocol] = useState(normalizeReasoningProtocol(initial?.reasoningProtocol));
   const [supportedEfforts, setSupportedEfforts] = useState<string[]>(initial?.supportedEfforts ?? []);
   const [customEffortDraft, setCustomEffortDraft] = useState("");
@@ -4364,6 +4374,7 @@ function ProviderEditor({
         keySet: Boolean(keyDraft.trim()) || (initial?.keySet ?? false),
         balanceUrl: balanceUrl.trim(),
         contextWindow: Number(ctx) || 0,
+        contextWindows: contextWindowsToMap(contextWindows),
         reasoningProtocol,
         supportedEfforts,
         defaultEffort,
@@ -4383,6 +4394,19 @@ function ProviderEditor({
     } finally {
       setFetchingModels(false);
     }
+  };
+
+  // Build the contextWindows map from the editor rows. Rows with an empty
+  // model id are dropped; a blank token value is stored as 0 (which the
+  // backend treats as "disable compaction for this model").
+  const contextWindowsToMap = (rows: [string, string][]): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const [model, token] of rows) {
+      const k = model.trim();
+      if (!k) continue;
+      out[k] = Number(token) || 0;
+    }
+    return out;
   };
 
   const save = async () => {
@@ -4405,6 +4429,7 @@ function ProviderEditor({
       keySet: Boolean(keyDraft.trim()) || (initial?.keySet ?? false),
       balanceUrl: balanceUrl.trim(),
       contextWindow: Number(ctx) || 0,
+      contextWindows: contextWindowsToMap(contextWindows),
       reasoningProtocol,
       supportedEfforts,
       // Clear the stored default if no levels are selected; the backend's
@@ -4486,6 +4511,51 @@ function ProviderEditor({
         <label className="set-label">{t("settings.providerContextWindow")}</label>
         <input className="mem-input" placeholder={t("settings.contextWindowPlaceholder")} value={ctx} onChange={(e) => setCtx(e.target.value)} inputMode="numeric" />
         <div className="mem-hint">{t("settings.contextWindowHint")}</div>
+        {modelNames.length > 1 && (
+          <>
+            <label className="set-label">{t("settings.providerContextWindows")}</label>
+            {contextWindows.map(([model, token], idx) => (
+              <div key={idx} className="set-row">
+                <input
+                  className="mem-input set-grow"
+                  placeholder={t("settings.providerModels")}
+                  value={model}
+                  onChange={(e) => {
+                    const next = [...contextWindows];
+                    next[idx] = [e.target.value, token];
+                    setContextWindows(next);
+                  }}
+                />
+                <input
+                  className="mem-input set-narrow"
+                  placeholder={t("settings.contextWindowPlaceholder")}
+                  value={token}
+                  onChange={(e) => {
+                    const next = [...contextWindows];
+                    next[idx] = [model, e.target.value];
+                    setContextWindows(next);
+                  }}
+                  inputMode="numeric"
+                />
+                <button
+                  type="button"
+                  className="set-button"
+                  onClick={() => setContextWindows(contextWindows.filter((_, i) => i !== idx))}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="set-button"
+              onClick={() => setContextWindows([...contextWindows, ["", ""]])}
+            >
+              + {t("settings.providerContextWindows")}
+            </button>
+            <div className="mem-hint">{t("settings.providerContextWindowsHint")}</div>
+          </>
+        )}
         <label className="set-label">{t("settings.visionModels")}</label>
         <input
           className="mem-input"

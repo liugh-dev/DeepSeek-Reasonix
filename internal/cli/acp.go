@@ -318,6 +318,10 @@ func newACPSubagentProviderResolver(cfg *config.Config, parent *config.ProviderE
 		if err != nil {
 			return nil, nil, 0, err
 		}
-		return prov, entry.Price, entry.ContextWindow, nil
+		ctxWin := entry.ContextWindow
+		if modelRef != "" {
+			ctxWin = entry.ContextWindowForModel(modelRef)
+		}
+		return prov, entry.Price, ctxWin, nil
 	}
 }

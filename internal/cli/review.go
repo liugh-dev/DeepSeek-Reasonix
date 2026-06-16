@@ -88,7 +88,7 @@ func reviewCommand(args []string) int {
 		MaxSteps:      12,
 		Temperature:   cfg.Agent.Temperature,
 		Pricing:       entry.Price,
-		ContextWindow: entry.ContextWindow,
+		ContextWindow: entry.ContextWindowForModel(modelName),
 	}, event.Discard)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error: review failed:", err)

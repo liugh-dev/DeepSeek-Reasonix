@@ -1011,6 +1011,41 @@ func backfillOfficialContextWindow(e *ProviderEntry, fallback int) {
 	}
 }
 
+// ContextWindowForModel returns the effective context window for the given
+// model: an explicit per-model entry in ContextWindows (key matched after
+// trimming whitespace; an explicit 0 wins and disables compaction for that
+// model), otherwise the provider-wide ContextWindow. Safe on a nil receiver.
+func (e *ProviderEntry) ContextWindowForModel(model string) int {
+	if e == nil {
+		return 0
+	}
+	if v, ok := e.ContextWindows[strings.TrimSpace(model)]; ok {
+		return v
+	}
+	return e.ContextWindow
+}
+
+// mergeLegacySingleModelContextWindow folds a legacy single-model entry's
+// context_window into a multi-model entry's per-model ContextWindows map,
+// keyed by the legacy entry's single Model. It skips zero windows (0 means
+// "disabled") and never overwrites an existing per-model override.
+func mergeLegacySingleModelContextWindow(merged, old *ProviderEntry) {
+	if merged == nil || old == nil {
+		return
+	}
+	model := strings.TrimSpace(old.Model)
+	if model == "" || old.ContextWindow <= 0 {
+		return
+	}
+	if _, exists := merged.ContextWindows[model]; exists {
+		return
+	}
+	if merged.ContextWindows == nil {
+		merged.ContextWindows = map[string]int{}
+	}
+	merged.ContextWindows[model] = old.ContextWindow
+}
+
 func officialProviderFromLegacy(entry ProviderEntry, old *ProviderEntry) ProviderEntry {
 	entry.Kind = old.Kind
 	entry.BaseURL = old.BaseURL
@@ -1018,6 +1053,12 @@ func officialProviderFromLegacy(entry ProviderEntry, old *ProviderEntry) Provide
 	entry.APIKeyEnv = old.APIKeyEnv
 	entry.BalanceURL = old.BalanceURL
 	entry.ContextWindow = old.ContextWindow
+	if old.ContextWindows != nil {
+		entry.ContextWindows = make(map[string]int, len(old.ContextWindows))
+		for k, v := range old.ContextWindows {
+			entry.ContextWindows[k] = v
+		}
+	}
 	entry.Price = old.Price
 	entry.Thinking = old.Thinking
 	entry.Effort = old.Effort

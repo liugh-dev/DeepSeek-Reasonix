@@ -837,3 +837,43 @@ func TestRenderTOMLDefaultStepsDoNotOverrideGlobalConfig(t *testing.T) {
 		t.Errorf("after project: max_steps = %d, want 100 (global should not be overridden by commented-out default)", cfg.Agent.MaxSteps)
 	}
 }
+
+func TestRenderTOMLRoundTripsPerModelContextWindows(t *testing.T) {
+	orig := Default()
+	orig.Providers = []ProviderEntry{{
+		Name:           "mimo-token-plan",
+		Kind:           "openai",
+		BaseURL:        "https://api.xiaomimimo.com/v1",
+		Models:         []string{"mimo-v2.5-pro", "mimo-v2.5"},
+		Default:        "mimo-v2.5-pro",
+		APIKeyEnv:      "MIMO_API_KEY",
+		ContextWindow:  1_000_000,
+		ContextWindows: map[string]int{"mimo-v2.5": 65_536},
+	}}
+
+	rendered := RenderTOML(orig)
+	if !strings.Contains(rendered, "context_windows = {") {
+		t.Fatalf("rendered TOML missing context_windows line:\n%s", rendered)
+	}
+
+	var got Config
+	if _, err := toml.Decode(rendered, &got); err != nil {
+		t.Fatalf("rendered TOML does not parse: %v", err)
+	}
+	p, ok := got.Provider("mimo-token-plan")
+	if !ok {
+		t.Fatal("mimo-token-plan provider missing after round trip")
+	}
+	if p.ContextWindow != 1_000_000 {
+		t.Errorf("ContextWindow round trip = %d, want 1000000", p.ContextWindow)
+	}
+	if p.ContextWindows["mimo-v2.5"] != 65_536 {
+		t.Errorf("ContextWindows[mimo-v2.5] round trip = %d, want 65536", p.ContextWindows["mimo-v2.5"])
+	}
+	if got, want := p.ContextWindowForModel("mimo-v2.5-pro"), 1_000_000; got != want {
+		t.Errorf("per-model: mimo-v2.5-pro window = %d, want %d (fallback to provider-wide)", got, want)
+	}
+	if got, want := p.ContextWindowForModel("mimo-v2.5"), 65_536; got != want {
+		t.Errorf("per-model: mimo-v2.5 window = %d, want %d", got, want)
+	}
+}

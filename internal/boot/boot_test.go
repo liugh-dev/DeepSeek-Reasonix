@@ -1006,6 +1006,90 @@ api_key_env = "REASONIX_TEST_KEY_UNSET"
 	}
 }
 
+// TestBuildAppliesPerModelContextWindow proves per-model context_windows
+// overrides reach the booted controller's main session: when default_model
+// names a provider whose default model has a per-model override, the
+// controller's ContextSnapshot reflects the override (not the provider-wide
+// context_window). A second provider whose default model is NOT overridden
+// falls back to the provider-wide value.
+func TestBuildAppliesPerModelContextWindow(t *testing.T) {
+	isolateConfigHome(t)
+	root := robustTempDir(t)
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, root, "reasonix.toml", `
+default_model = "multi"
+
+[codegraph]
+enabled = false
+
+[[providers]]
+name = "multi"
+kind = "openai"
+base_url = "https://example.invalid"
+models = ["deep-chat", "deep-lite"]
+default = "deep-chat"
+context_window = 64000
+context_windows = { "deep-chat" = 128000 }
+api_key_env = "REASONIX_TEST_KEY_UNSET"
+`)
+	t.Chdir(root)
+
+	ctrl, err := Build(context.Background(), Options{Model: "multi"})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer ctrl.Close()
+
+	// default_model "multi" resolves to its default model "deep-chat", which
+	// has a per-model override of 128000 — so the main session's context
+	// window must be 128000, NOT the provider-wide 64000.
+	if _, got := ctrl.ContextSnapshot(); got != 128000 {
+		t.Fatalf("ContextSnapshot() window = %d, want 128000 (per-model override for deep-chat)", got)
+	}
+}
+
+// TestBuildFallsBackToProviderWideContextWindow proves that a model WITHOUT a
+// per-model context_windows entry resolves to the provider-wide context_window.
+// It uses the "provider/model" ref form so the selected model is unambiguous.
+func TestBuildFallsBackToProviderWideContextWindow(t *testing.T) {
+	isolateConfigHome(t)
+	root := robustTempDir(t)
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, root, "reasonix.toml", `
+default_model = "multi"
+
+[codegraph]
+enabled = false
+
+[[providers]]
+name = "multi"
+kind = "openai"
+base_url = "https://example.invalid"
+models = ["deep-chat", "deep-lite"]
+default = "deep-chat"
+context_window = 64000
+context_windows = { "deep-chat" = 128000 }
+api_key_env = "REASONIX_TEST_KEY_UNSET"
+`)
+	t.Chdir(root)
+
+	// Select "deep-lite" explicitly: it has no per-model entry, so the
+	// controller must fall back to the provider-wide 64000.
+	ctrl, err := Build(context.Background(), Options{Model: "multi/deep-lite"})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer ctrl.Close()
+
+	if _, got := ctrl.ContextSnapshot(); got != 64000 {
+		t.Fatalf("ContextSnapshot() window = %d, want 64000 (provider-wide fallback for deep-lite)", got)
+	}
+}
+
 // TestBuildDiscoversSkills proves the skill wiring end-to-end: a project skill
 // is discovered at boot, surfaced via Controller.Skills(), and its name folds
 // into the cache-stable system prompt's "# Skills" index alongside a built-in.

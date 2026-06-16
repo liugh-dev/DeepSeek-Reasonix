@@ -26,27 +26,28 @@ import (
 // --- read ---
 
 type ProviderView struct {
-	Name              string   `json:"name"`
-	BuiltIn           bool     `json:"builtIn"`
-	Added             bool     `json:"added"`
-	Kind              string   `json:"kind"`
-	BaseURL           string   `json:"baseUrl"`
-	Models            []string `json:"models"`
-	VisionModels      []string `json:"visionModels"`
-	VisionModelsSet   bool     `json:"visionModelsConfigured"`
-	ModelsURL         string   `json:"modelsUrl"`
-	Default           string   `json:"default"`
-	APIKeyEnv         string   `json:"apiKeyEnv"`
-	KeySet            bool     `json:"keySet"` // the env var currently resolves to a non-empty value
-	RequiresKey       bool     `json:"requiresKey"`
-	Configured        bool     `json:"configured"` // selectable: either key is present or no key is required
-	KeySource         string   `json:"keySource,omitempty"`
-	KeySourcePath     string   `json:"keySourcePath,omitempty"`
-	BalanceURL        string   `json:"balanceUrl"`
-	ContextWindow     int      `json:"contextWindow"`
-	ReasoningProtocol string   `json:"reasoningProtocol"`
-	SupportedEfforts  []string `json:"supportedEfforts"`
-	DefaultEffort     string   `json:"defaultEffort"`
+	Name              string         `json:"name"`
+	BuiltIn           bool           `json:"builtIn"`
+	Added             bool           `json:"added"`
+	Kind              string         `json:"kind"`
+	BaseURL           string         `json:"baseUrl"`
+	Models            []string       `json:"models"`
+	VisionModels      []string       `json:"visionModels"`
+	VisionModelsSet   bool           `json:"visionModelsConfigured"`
+	ModelsURL         string         `json:"modelsUrl"`
+	Default           string         `json:"default"`
+	APIKeyEnv         string         `json:"apiKeyEnv"`
+	KeySet            bool           `json:"keySet"` // the env var currently resolves to a non-empty value
+	RequiresKey       bool           `json:"requiresKey"`
+	Configured        bool           `json:"configured"` // selectable: either key is present or no key is required
+	KeySource         string         `json:"keySource,omitempty"`
+	KeySourcePath     string         `json:"keySourcePath,omitempty"`
+	BalanceURL        string         `json:"balanceUrl"`
+	ContextWindow     int            `json:"contextWindow"`
+	ContextWindows    map[string]int `json:"contextWindows"` // optional per-model overrides
+	ReasoningProtocol string         `json:"reasoningProtocol"`
+	SupportedEfforts  []string       `json:"supportedEfforts"`
+	DefaultEffort     string         `json:"defaultEffort"`
 }
 
 type PermissionsView struct {
@@ -203,6 +204,17 @@ func nonNil(s []string) []string {
 	return s
 }
 
+func cloneContextWindowsUI(m map[string]int) map[string]int {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
 func providerRemovalFallbackRef(c *config.Config, name string) string {
 	for i := range c.Providers {
 		p := &c.Providers[i]
@@ -315,6 +327,7 @@ func providerViewFromEntryForRootWithResolver(p config.ProviderEntry, builtIn, a
 		KeySourcePath:     key.Source.Path,
 		BalanceURL:        p.BalanceURL,
 		ContextWindow:     p.ContextWindow,
+		ContextWindows:    cloneContextWindowsUI(p.ContextWindows),
 		ReasoningProtocol: p.ReasoningProtocol,
 		SupportedEfforts:  nonNil(p.SupportedEfforts),
 		DefaultEffort:     p.DefaultEffort,
@@ -1227,6 +1240,7 @@ func (a *App) SaveProvider(p ProviderView) error {
 		e.APIKeyEnv = p.APIKeyEnv
 		e.BalanceURL = strings.TrimSpace(p.BalanceURL)
 		e.ContextWindow = p.ContextWindow
+		e.ContextWindows = cloneContextWindowsUI(p.ContextWindows)
 		e.ReasoningProtocol = p.ReasoningProtocol
 		e.SupportedEfforts = p.SupportedEfforts
 		e.DefaultEffort = p.DefaultEffort

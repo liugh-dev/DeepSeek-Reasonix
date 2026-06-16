@@ -285,6 +285,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			if p.ContextWindow > 0 {
 				fmt.Fprintf(&b, "context_window = %d   # tokens; compaction triggers near this limit\n", p.ContextWindow)
 			}
+			if len(p.ContextWindows) > 0 {
+				fmt.Fprintf(&b, "context_windows = %s   # per-model context_window overrides; falls back to context_window\n", renderContextWindowsMap(p.ContextWindows))
+			}
 			if p.Price != nil {
 				fmt.Fprintf(&b, "price       = %s   # provider-wide fallback, per 1M tokens\n", renderPricingInline(p.Price))
 			}
@@ -942,6 +945,34 @@ func renderPricingMap(prices map[string]*provider.Pricing) string {
 			b.WriteString(", ")
 		}
 		fmt.Fprintf(&b, "%s = %s", strconv.Quote(model), renderPricingInline(prices[model]))
+	}
+	b.WriteString(" }")
+	return b.String()
+}
+
+// renderContextWindowsMap renders a per-model context_window override map as
+// an inline TOML table. Keys are sorted for stable output.
+func renderContextWindowsMap(windows map[string]int) string {
+	if len(windows) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(windows))
+	for model := range windows {
+		if strings.TrimSpace(model) != "" {
+			keys = append(keys, model)
+		}
+	}
+	if len(keys) == 0 {
+		return "{}"
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString("{ ")
+	for i, model := range keys {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%s = %d", strconv.Quote(model), windows[model])
 	}
 	b.WriteString(" }")
 	return b.String()

@@ -880,8 +880,9 @@ type ProviderEntry struct {
 	resolvedSource CredentialSource
 	BalanceURL     string                       `toml:"balance_url"` // optional; a provider-specific wallet-balance endpoint (DeepSeek: https://api.deepseek.com/user/balance). Empty = no balance readout.
 	ContextWindow  int                          `toml:"context_window"`
-	Price          *provider.Pricing            `toml:"price"`  // legacy/provider-wide fallback
-	Prices         map[string]*provider.Pricing `toml:"prices"` // optional per-model prices; keys are model ids
+	ContextWindows map[string]int               `toml:"context_windows"` // optional per-model overrides; unlisted models fall back to ContextWindow. An explicit 0 disables compaction for that model.
+	Price          *provider.Pricing            `toml:"price"`           // legacy/provider-wide fallback
+	Prices         map[string]*provider.Pricing `toml:"prices"`          // optional per-model prices; keys are model ids
 	// Thinking / Effort are provider-kind-specific knobs forwarded to the provider
 	// via Config.Extra. The anthropic provider reads Thinking="adaptive" to enable
 	// extended thinking and Effort ("low".."max") to tune depth. The

@@ -1011,6 +1011,8 @@ export const en = {
 	  "settings.providerContextWindow": "Context window",
 	  "settings.contextWindowPlaceholder": "tokens (0 = provider default)",
 	  "settings.contextWindowHint": "Max tokens to keep in context for this provider. Leave 0 to use the provider's default.",
+	  "settings.providerContextWindows": "Per-model context windows",
+	  "settings.providerContextWindowsHint": "Optional override per model id. Unlisted models use the provider-wide value above. 0 disables compaction.",
   "settings.providerReasoningProtocol": "reasoning protocol",
   "settings.providerReasoningProtocolAuto": "auto (model and endpoint detection)",
   "settings.providerReasoningProtocolHint": "For OpenAI-compatible reasoning models. deepseek uses DeepSeek reasoning fields, openai uses ordinary reasoning_effort, and none disables it.",

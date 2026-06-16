@@ -43,15 +43,16 @@ type ConfigReport struct {
 }
 
 type ProviderReport struct {
-	Name          string   `json:"name"`
-	Kind          string   `json:"kind"`
-	BaseURLHost   string   `json:"base_url_host,omitempty"`
-	Model         string   `json:"model,omitempty"`
-	Models        []string `json:"models,omitempty"`
-	APIKeyEnv     string   `json:"api_key_env,omitempty"`
-	KeyPresent    bool     `json:"key_present"`
-	IsDefault     bool     `json:"is_default"`
-	ContextWindow int      `json:"context_window,omitempty"`
+	Name           string            `json:"name"`
+	Kind           string            `json:"kind"`
+	BaseURLHost    string            `json:"base_url_host,omitempty"`
+	Model          string            `json:"model,omitempty"`
+	Models         []string          `json:"models,omitempty"`
+	APIKeyEnv      string            `json:"api_key_env,omitempty"`
+	KeyPresent     bool              `json:"key_present"`
+	IsDefault      bool              `json:"is_default"`
+	ContextWindow  int               `json:"context_window,omitempty"`
+	ContextWindows map[string]int    `json:"context_windows,omitempty"`
 }
 
 type PluginReport struct {
@@ -157,15 +158,16 @@ func Collect(opts Options) Report {
 		p := cfg.Providers[i]
 		models := p.ModelList()
 		report.Providers = append(report.Providers, ProviderReport{
-			Name:          p.Name,
-			Kind:          p.Kind,
-			BaseURLHost:   hostOnly(p.BaseURL),
-			Model:         p.Model,
-			Models:        models,
-			APIKeyEnv:     p.APIKeyEnv,
-			KeyPresent:    p.Configured(),
-			IsDefault:     p.Name == cfg.DefaultModel,
-			ContextWindow: p.ContextWindow,
+			Name:           p.Name,
+			Kind:           p.Kind,
+			BaseURLHost:    hostOnly(p.BaseURL),
+			Model:          p.Model,
+			Models:         models,
+			APIKeyEnv:      p.APIKeyEnv,
+			KeyPresent:     p.Configured(),
+			IsDefault:      p.Name == cfg.DefaultModel,
+			ContextWindow:  p.ContextWindow,
+			ContextWindows: p.ContextWindows,
 		})
 	}
 	for _, p := range cfg.Plugins {

@@ -548,7 +548,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		if err != nil {
 			return nil, nil, 0, err
 		}
-		return p, me.Price, me.ContextWindow, nil
+		return p, me.Price, me.ContextWindowForModel(me.Model), nil
 	}
 	subagentIdentity := func(modelRef, effort string) (string, string) {
 		return subagentEffectiveIdentity(cfg, modelName, entry, modelRef, effort)
@@ -560,7 +560,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	var taskTool *agent.TaskTool
 	newTaskTool := func() *agent.TaskTool {
 		return agent.NewTaskTool(execProv, entry.Price, reg, maxSteps,
-			entry.ContextWindow, cfg.Agent.RecentKeep, cfg.Agent.SoftCompactRatio, cfg.Agent.CompactRatio, cfg.Agent.CompactForceRatio,
+			entry.ContextWindowForModel(entry.Model), cfg.Agent.RecentKeep, cfg.Agent.SoftCompactRatio, cfg.Agent.CompactRatio, cfg.Agent.CompactForceRatio,
 			cfg.Agent.Temperature, config.ArchiveDir(), "", headlessGate,
 			keepPolicy,
 			taskModel, taskEffort, resolveSubagentProvider).
@@ -627,7 +627,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 			return "", fmt.Errorf("read_only_skill does not support continue_from/fork_from")
 		}
 		sk = skill.WithCodeGraphTools(sk, skill.CodeGraphReadTools(reg))
-		prov, price, ctxWin := execProv, entry.Price, entry.ContextWindow
+		prov, price, ctxWin := execProv, entry.Price, entry.ContextWindowForModel(entry.Model)
 		modelRef := subagentModelRef(cfg, sk)
 		effortRef := subagentEffortRef(cfg, sk)
 		if modelRef != "" || effortRef != "" {
@@ -671,7 +671,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	// them. Its tool activity nests under the invoking call, like `task`.
 	skillRunner := func(sctx context.Context, sk skill.Skill, task string, runOpts skill.SubagentRunOptions) (string, error) {
 		sk = skill.WithCodeGraphTools(sk, skill.CodeGraphReadTools(reg))
-		prov, price, ctxWin := execProv, entry.Price, entry.ContextWindow
+		prov, price, ctxWin := execProv, entry.Price, entry.ContextWindowForModel(entry.Model)
 		modelRef := subagentModelRef(cfg, sk)
 		effortRef := subagentEffortRef(cfg, sk)
 		if modelRef != "" || effortRef != "" {
@@ -958,7 +958,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		Hooks:                hookRunner,
 		Jobs:                 jm,
 		ProjectChecks:        projectChecks,
-		ContextWindow:        entry.ContextWindow,
+		ContextWindow:        entry.ContextWindowForModel(entry.Model),
 		SoftCompactRatio:     cfg.Agent.SoftCompactRatio,
 		CompactRatio:         cfg.Agent.CompactRatio,
 		CompactForceRatio:    cfg.Agent.CompactForceRatio,
@@ -1007,7 +1007,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 				MaxSteps:          cfg.Agent.PlannerMaxSteps,
 				MaxStepsKey:       "agent.planner_max_steps",
 				Gate:              headlessGate,
-				ContextWindow:     pe.ContextWindow,
+				ContextWindow:     pe.ContextWindowForModel(pe.Model),
 				SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
 				CompactRatio:      cfg.Agent.CompactRatio,
 				CompactForceRatio: cfg.Agent.CompactForceRatio,

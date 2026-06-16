@@ -743,6 +743,8 @@ export const zhTW: Record<DictKey, string> = {
 	  "settings.providerContextWindow": "上下文視窗",
 	  "settings.contextWindowPlaceholder": "token 數（0 = 模型服務預設值）",
 	  "settings.contextWindowHint": "該模型服務在上下文中保留的最大 token 數。填 0 表示使用模型服務預設值。",
+	  "settings.providerContextWindows": "按模型的上下文視窗覆寫",
+	  "settings.providerContextWindowsHint": "可選：按模型 id 單獨覆寫上下文視窗。沒有列出的模型沿用上方的全域值；填 0 表示停用 compaction。",
   "settings.providerReasoningProtocol": "reasoning protocol",
   "settings.providerReasoningProtocolAuto": "auto（按模型和端點自動判斷）",
   "settings.providerReasoningProtocolHint": "用於 OpenAI-compatible 推理模型。deepseek 使用 DeepSeek reasoning 參數，openai 使用普通 reasoning_effort，none 表示停用。",

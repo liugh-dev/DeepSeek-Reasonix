@@ -1013,6 +1013,8 @@ export const zh: Record<DictKey, string> = {
 	  "settings.providerContextWindow": "上下文窗口",
 	  "settings.contextWindowPlaceholder": "token 数（0 = 模型服务默认值）",
 	  "settings.contextWindowHint": "该模型服务在上下文中保留的最大 token 数。填 0 表示使用模型服务默认值。",
+	  "settings.providerContextWindows": "按模型的上下文窗口覆盖",
+	  "settings.providerContextWindowsHint": "可选：按模型 id 单独覆盖上下文窗口。未列出的模型沿用上方的全局值；填 0 表示禁用 compaction。",
   "settings.providerReasoningProtocol": "reasoning protocol",
   "settings.providerReasoningProtocolAuto": "auto（按模型和端点自动判断）",
   "settings.providerReasoningProtocolHint": "用于 OpenAI-compatible 推理模型。deepseek 使用 DeepSeek reasoning 参数，openai 使用普通 reasoning_effort，none 表示禁用。",
