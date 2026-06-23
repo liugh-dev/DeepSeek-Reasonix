@@ -2204,6 +2204,10 @@ func (m chatTUI) handleApprovalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		m.ctrl.Cancel()
 		return answer(false, false, false)
+	case "ctrl+y", "super+y", "meta+y":
+		m.pendingApproval = nil
+		m.toggleYoloMode()
+		return m, nil
 	case "enter":
 		return answer(true, false, false)
 	case "esc":
