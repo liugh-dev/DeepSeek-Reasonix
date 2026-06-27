@@ -43,16 +43,16 @@ type ConfigReport struct {
 }
 
 type ProviderReport struct {
-	Name           string            `json:"name"`
-	Kind           string            `json:"kind"`
-	BaseURLHost    string            `json:"base_url_host,omitempty"`
-	Model          string            `json:"model,omitempty"`
-	Models         []string          `json:"models,omitempty"`
-	APIKeyEnv      string            `json:"api_key_env,omitempty"`
-	KeyPresent     bool              `json:"key_present"`
-	IsDefault      bool              `json:"is_default"`
-	ContextWindow  int               `json:"context_window,omitempty"`
-	ContextWindows map[string]int    `json:"context_windows,omitempty"`
+	Name           string         `json:"name"`
+	Kind           string         `json:"kind"`
+	BaseURLHost    string         `json:"base_url_host,omitempty"`
+	Model          string         `json:"model,omitempty"`
+	Models         []string       `json:"models,omitempty"`
+	APIKeyEnv      string         `json:"api_key_env,omitempty"`
+	KeyPresent     bool           `json:"key_present"`
+	IsDefault      bool           `json:"is_default"`
+	ContextWindow  int            `json:"context_window,omitempty"`
+	ContextWindows map[string]int `json:"context_windows,omitempty"`
 }
 
 type PluginReport struct {

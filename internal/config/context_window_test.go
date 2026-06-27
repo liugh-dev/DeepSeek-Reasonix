@@ -20,9 +20,9 @@ func TestContextWindowForModel_FallbackToProviderWide(t *testing.T) {
 
 func TestContextWindowForModel_PerModelOverride(t *testing.T) {
 	e := &ProviderEntry{
-		ContextWindow:   1_000_000,
+		ContextWindow: 1_000_000,
 		ContextWindows: map[string]int{
-			"mimo-v2.5":      65_536,
+			"mimo-v2.5":         65_536,
 			"deepseek-v4-flash": 128_000,
 		},
 	}
@@ -49,7 +49,7 @@ func TestContextWindowForModel_TrimsWhitespace(t *testing.T) {
 
 func TestContextWindowForModel_ZeroDisablesCompaction(t *testing.T) {
 	e := &ProviderEntry{
-		ContextWindow:   128_000,
+		ContextWindow:  128_000,
 		ContextWindows: map[string]int{"mimo-v2.5": 0},
 	}
 	if got := e.ContextWindowForModel("mimo-v2.5"); got != 0 {
@@ -63,7 +63,7 @@ func TestContextWindowForModel_ZeroDisablesCompaction(t *testing.T) {
 
 func TestContextWindowForModel_EmptyMapFallsBack(t *testing.T) {
 	e := &ProviderEntry{
-		ContextWindow:   200_000,
+		ContextWindow:  200_000,
 		ContextWindows: map[string]int{},
 	}
 	if got := e.ContextWindowForModel("anything"); got != 200_000 {
